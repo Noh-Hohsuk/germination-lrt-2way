@@ -141,7 +141,7 @@ Pval_B = chi2cdf(log_diff_AvsApB, (J-1), 'upper');                   % H0: no B 
 
 % Display results
 fprintf('Binomial LRT p-values:\n');
-fprintf('  Interaction (A¡¿B): %g\n', Pval_interaction);
+fprintf('  Interaction (AÂ¡Â¿B): %g\n', Pval_interaction);
 fprintf('  Factor A        : %g\n', Pval_A);
 fprintf('  Factor B        : %g\n', Pval_B);
 

@@ -6,7 +6,7 @@ This repository contains the MATLAB and R implementations accompanying the manus
 ## Repository structure
 
 - `R/` : R implementation of the proposed method
-- `examples/` : Example analysis using the sheepgrass data
+- `example/` : Example analysis using the sheepgrass data
 - `data/` : Sheepgrass germination data
 - `MATLAB/` : MATLAB code used for simulation studies and analysis
 

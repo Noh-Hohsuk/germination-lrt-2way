@@ -141,9 +141,9 @@ for iter = 1:num_simul
     total_LL_ApB    = sum(df_ApB.loglik);
 
     % LRT statistics (correct mapping)
-    %  - A effect:      M_{A+B} vs M_B      ¡æ log_diff_BvsApB, df = I-1
-    %  - B effect:      M_{A+B} vs M_A      ¡æ log_diff_AvsApB, df = J-1
-    %  - Interaction:   M_{AB}  vs M_{A+B}  ¡æ log_diff_ApBvsAB, df = (I-1)(J-1)
+    %  - A effect:      M_{A+B} vs M_B      Â¡Ã¦ log_diff_BvsApB, df = I-1
+    %  - B effect:      M_{A+B} vs M_A      Â¡Ã¦ log_diff_AvsApB, df = J-1
+    %  - Interaction:   M_{AB}  vs M_{A+B}  Â¡Ã¦ log_diff_ApBvsAB, df = (I-1)(J-1)
     log_diff_ApBvsAB(iter) = 2 * (total_LL_AB  - total_LL_ApB);
     log_diff_AvsApB(iter)  = 2 * (total_LL_ApB - total_LL_A);
     log_diff_BvsApB(iter)  = 2 * (total_LL_ApB - total_LL_B);
@@ -172,14 +172,14 @@ for iter = 1:num_simul
 
     mu_hat0 = sum(sum(Amat, 'omitnan'), 'omitnan') / N_total;
 
-    AA = reshape(sum(Amat, 'omitnan'), J, I).';  % I¡¿J: cell sums
-    BB = reshape(n_vec,                 J, I).'; % I¡¿J: cell sizes
+    AA = reshape(sum(Amat, 'omitnan'), J, I).';  % IÂ¡Â¿J: cell sums
+    BB = reshape(n_vec,                 J, I).'; % IÂ¡Â¿J: cell sizes
 
     row_sum = sum(AA, 2);  row_n = sum(BB, 2);
     col_sum = sum(AA, 1);  col_n = sum(BB, 1);
 
-    a0 = (row_sum ./ row_n).';      % 1¡¿I
-    b0 =  col_sum ./ col_n;         % 1¡¿J
+    a0 = (row_sum ./ row_n).';      % 1Â¡Â¿I
+    b0 =  col_sum ./ col_n;         % 1Â¡Â¿J
 
     opts_fmin = optimset('Display','off');
 

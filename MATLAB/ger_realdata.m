@@ -14,7 +14,8 @@
 %     for the additive (A+B) model with possibly unequal replicates per cell.
 
 clear;
-df = readtable('sheepgrass.csv');
+%df = readtable('sheepgrass.csv');
+df = readtable('epimedium.csv');
 
 Fac_A = table2array(df(:, 'Fac_A'));
 Fac_B = table2array(df(:, 'Fac_B'));
@@ -141,7 +142,7 @@ Pval_B = chi2cdf(log_diff_AvsApB, (J-1), 'upper');                   % H0: no B 
 
 % Display results
 fprintf('Binomial LRT p-values:\n');
-fprintf('  Interaction (A¡¿B): %g\n', Pval_interaction);
+fprintf('  Interaction (A��B): %g\n', Pval_interaction);
 fprintf('  Factor A        : %g\n', Pval_A);
 fprintf('  Factor B        : %g\n', Pval_B);
 

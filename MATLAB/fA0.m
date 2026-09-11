@@ -1,6 +1,4 @@
 function ss = fA0(n, A, I, J, adf, ab)
-    % H0(A): mu + beta_j (A È¿°ú ¾øÀ½), no interaction
-    % ab = [mu, beta(1:J)]
     IJ = I*J; B = zeros(IJ,1); t = 1;
     eps_ridge = 1e-12;
     mu = ab(1); beta = ab(2:1+J);

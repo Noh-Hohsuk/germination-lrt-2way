@@ -1,10 +1,10 @@
 %% Unified simulation: Binomial LRT vs Two-way ANOVA vs Normal-ILRT
 clear; clc;
-rng(123);
+%rng(123);
 
 %% ---------------- Basic settings ----------------
 alpha      = 0.05;          % significance level
-num_simul  = 1000;          % number of simulation runs
+num_simul  = 1;          % number of simulation runs
 num_seeds  = 30;            % n_ijk (number of seeds per replicate)
 rep_num    = 4;             % N_ij (number of replicates per cell)
 
@@ -13,19 +13,24 @@ rep_num    = 4;             % N_ij (number of replicates per cell)
 
 %  scenario 1 - many zero cells
 %rate_vec = [0,0,0.2,0.5,  0,0,0.2,0.5,  0,0,0.2,0.5,  0,0,0.2,0.5];
-rate_vec = [0,0,0.2,0.3,  0,0,0.2,0.3,  0,0,0.2,0.3,  0,0,0.2,0.3];
 
 % % scenario 1 - no zero cells
 %rate_vec = [0.1,0.2,0.4,0.6,  0.1,0.2,0.4,0.6,  0.1,0.2,0.4,0.6,  0.1,0.2,0.4,0.6];
 
-% % scenario 2-1
-% rate_vec = [0,0.1,0.3,0.3,  0.2,0.3,0.5,0.5,  0.5,0.6,0.8,0.8,  0.7,0.8,1,1];
+% scenario 2-1
+%rate_vec = [0,0.1,0.3,0.3,  0,0.1,0.3,0.3,  0.5,0.6,0.8,0.8,  0.7,0.8,1,1];
 
-% % scenario 2-2
+% scenario 2-2 (needed to check)
 % rate_vec = [0.2,0.3,0.5,0.5,  0.2,0.3,0.5,0.5,  0.4,0.5,0.7,0.7, 0.5,0.6,0.8,0.8];
 
-% scenario 3 (default)
-%%rate_vec = [0,0.1,0.4,0.4,  0.2,0.3,0.6,0.6,  0.5,0.6,0.6,0.7,  0.6,0.7,1,1];
+% scenario 3-1 
+%rate_vec = [0,0.1,0.4,0.4,  0.2,0.3,0.6,0.6,  0.5,0.6,0.9,0.7,  0.6,0.7,1,1];
+
+% scenario 3-2 
+rate_vec = [0.2,0.3,0.5,0.5,  0.2,0.3,0.5,0.5,  0.4,0.5,0.9,0.7, 0.5,0.6,0.8,0.8];
+
+
+
 
 P = reshape(rate_vec, 4, 4);        % rows = Factor A, cols = Factor B
 [I, J]  = size(P);
@@ -141,12 +146,20 @@ for iter = 1:num_simul
     total_LL_ApB    = sum(df_ApB.loglik);
 
     % LRT statistics (correct mapping)
-    %  - A effect:      M_{A+B} vs M_B      ¡æ log_diff_BvsApB, df = I-1
-    %  - B effect:      M_{A+B} vs M_A      ¡æ log_diff_AvsApB, df = J-1
-    %  - Interaction:   M_{AB}  vs M_{A+B}  ¡æ log_diff_ApBvsAB, df = (I-1)(J-1)
+    %  - A effect:      M_{A+B} vs M_B      �� log_diff_BvsApB, df = I-1
+    %  - B effect:      M_{A+B} vs M_A      �� log_diff_AvsApB, df = J-1
+    %  - Interaction:   M_{AB}  vs M_{A+B}  �� log_diff_ApBvsAB, df = (I-1)(J-1)
     log_diff_ApBvsAB(iter) = 2 * (total_LL_AB  - total_LL_ApB);
     log_diff_AvsApB(iter)  = 2 * (total_LL_ApB - total_LL_A);
     log_diff_BvsApB(iter)  = 2 * (total_LL_ApB - total_LL_B);
+
+     writetable(df, 'one_dataset.csv');
+
+     dlmwrite('matlab_p_add.csv', L * theta, ...
+    'delimiter', ',', 'precision', '%.15g');
+
+     dlmwrite('matlab_logLik_add.csv', total_LL_ApB, ...
+    'delimiter', ',', 'precision', '%.15g');
 
     %% ===== 2) Two-way ANOVA =====
     data_ANOVA = reshape(df.g_ijk ./ df.n_ijk, [J*rep_num, I]);
@@ -172,14 +185,14 @@ for iter = 1:num_simul
 
     mu_hat0 = sum(sum(Amat, 'omitnan'), 'omitnan') / N_total;
 
-    AA = reshape(sum(Amat, 'omitnan'), J, I).';  % I¡¿J: cell sums
-    BB = reshape(n_vec,                 J, I).'; % I¡¿J: cell sizes
+    AA = reshape(sum(Amat, 'omitnan'), J, I).';  % I��J: cell sums
+    BB = reshape(n_vec,                 J, I).'; % I��J: cell sizes
 
     row_sum = sum(AA, 2);  row_n = sum(BB, 2);
     col_sum = sum(AA, 1);  col_n = sum(BB, 1);
 
-    a0 = (row_sum ./ row_n).';      % 1¡¿I
-    b0 =  col_sum ./ col_n;         % 1¡¿J
+    a0 = (row_sum ./ row_n).';      % 1��I
+    b0 =  col_sum ./ col_n;         % 1��J
 
     opts_fmin = optimset('Display','off');
 

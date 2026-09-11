@@ -1,5 +1,5 @@
 function ss = fB0(n, A, I, J, adf, ab)
-    % H0(B): mu + alpha_i (B È¿°ú ¾øÀ½), no interaction
+    % H0(B): mu + alpha_i (B ÃˆÂ¿Â°Ãº Â¾Ã¸Ã€Â½), no interaction
     % ab = [mu, alpha(1:I)]
     IJ = I*J; B = zeros(IJ,1); t = 1;
     eps_ridge = 1e-12;

@@ -1,7 +1,7 @@
 # germination_factorial_LRT_final.R
 #
 #
-# Release v1
+# Release v6
 #   Unified two-factor germination analysis with selectable interaction scale:
 #     * scale = "probability", method = "mle"
 #         constrained binomial likelihood ratio tests on the probability scale
@@ -15,6 +15,44 @@
 #     * significant interaction    -> simple-effect pairwise comparisons
 #     * Holm multiplicity adjustment
 #     * compact letter displays
+#
+#   Release v6 interface refinement:
+#     * method is now optional. If omitted, ordinary maximum likelihood is
+#       selected automatically.
+#     * For the proposed probability-scale analysis, users can simply specify
+#       scale = "probability" (or use the function defaults).
+#     * For conventional logistic regression, scale = "logit" is sufficient.
+#     * method = "firth" is specified only when Firth logistic regression is
+#       desired.
+#     * Printed summaries now use descriptive method names rather than the
+#       internal code "mle" for probability-scale analysis.
+#
+#   Release v5 fixes:
+#     * Firth main-effect post-hoc comparisons now correctly handle a
+#       two-level factor. When the two levels are constrained equal, the
+#       reduced model omits that now one-level factor instead of attempting
+#       to apply contrasts to it.
+#     * One-level factors are allowed only inside such reduced post-hoc fits;
+#       the overall Firth analysis still requires at least two represented
+#       levels for each factor.
+#
+#   Release v4 fixes:
+#     * Firth weighted-binary data are now assembled from integer factor codes
+#       and converted to factors only after row assembly, preventing accidental
+#       one-level factor/contrast errors with character or year-like labels;
+#     * Simple_effect labels are restored to original factor labels
+#       (e.g. 'A within 2016', 'B within N4').
+#
+#   Release v3 fixes:
+#     * probability-scale main-effect pairwise LRTs now use the internally
+#       recoded factor levels, so nonnumeric labels such as 2016/2017 are
+#       correctly constrained in the reduced model;
+#     * CLD level labels such as B1/B2 are restored to the original labels.
+#
+#   Input-label handling:
+#     * Fac_A and Fac_B may be numeric, character, or factor variables.
+#     * Original labels are retained in post-hoc tables, CLDs, and
+#       fitted-probability matrices.
 #
 #   Additional features:
 #     * heuristic separation diagnostics for ordinary logistic MLE
@@ -100,26 +138,31 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
   }
 
   df <- df[, req]
-  df$Fac_A <- as.integer(df$Fac_A)
-  df$Fac_B <- as.integer(df$Fac_B)
+
+  # Preserve the factor labels supplied by the user. Internally, levels are
+  # recoded consecutively as 1,...,I and 1,...,J for numerical routines.
+  if (anyNA(df$Fac_A) || anyNA(df$Fac_B)) {
+    stop("Fac_A and Fac_B must not contain missing values.")
+  }
+
+  A_labels <- unique(as.character(df$Fac_A))
+  B_labels <- unique(as.character(df$Fac_B))
+
+  df$Fac_A <- match(as.character(df$Fac_A), A_labels)
+  df$Fac_B <- match(as.character(df$Fac_B), B_labels)
   df$g_ijk <- as.numeric(df$g_ijk)
   df$n_ijk <- as.numeric(df$n_ijk)
 
-  if (anyNA(df)) stop("Missing values are not allowed.")
+  if (anyNA(df$g_ijk) || anyNA(df$n_ijk)) {
+    stop("Missing or non-numeric binomial counts are not allowed.")
+  }
   if (any(df$g_ijk < 0) || any(df$n_ijk <= 0) ||
       any(df$g_ijk > df$n_ijk)) {
     stop("Invalid binomial counts.")
   }
 
-  I <- max(df$Fac_A)
-  J <- max(df$Fac_B)
-
-  if (!setequal(sort(unique(df$Fac_A)), seq_len(I))) {
-    stop("Fac_A must be coded consecutively as 1,...,I.")
-  }
-  if (!setequal(sort(unique(df$Fac_B)), seq_len(J))) {
-    stop("Fac_B must be coded consecutively as 1,...,J.")
-  }
+  I <- length(A_labels)
+  J <- length(B_labels)
 
   tab <- table(df$Fac_A, df$Fac_B)
   if (any(tab == 0)) {
@@ -129,7 +172,13 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
   df <- df[order(df$Fac_A, df$Fac_B), ]
   rownames(df) <- NULL
 
-  list(df = df, I = I, J = J)
+  list(
+    df = df,
+    I = I,
+    J = J,
+    A_labels = A_labels,
+    B_labels = B_labels
+  )
 }
 
 
@@ -582,7 +631,7 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
     l2 <- pairs[k, 2]
 
     nullfit <- .fit_pairwise_null_additive(
-      df,
+      prep$df,
       factor = factor,
       level1 = l1,
       level2 = l2,
@@ -1052,10 +1101,13 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
 }
 
 .expand_binomial_for_firth <- function(df) {
-  prep <- .prepare_logit_data(df)
+  prep <- .prepare_data(df)
   d <- prep$df
 
-  rows <- vector("list", 2L * nrow(d))
+  # Construct the weighted binary representation using integer factor codes,
+  # then create factors only after all rows have been assembled. This avoids
+  # accidental one-level factor objects during row-wise construction/rbind().
+  out_list <- vector("list", 2L * nrow(d))
   z <- 0L
 
   for (r in seq_len(nrow(d))) {
@@ -1064,30 +1116,44 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
 
     if (g > 0) {
       z <- z + 1L
-      rows[[z]] <- data.frame(
+      out_list[[z]] <- data.frame(
         y = 1,
-        A = d$A[r],
-        B = d$B[r],
+        A_code = d$Fac_A[r],
+        B_code = d$Fac_B[r],
         weight = g
       )
     }
 
     if (f > 0) {
       z <- z + 1L
-      rows[[z]] <- data.frame(
+      out_list[[z]] <- data.frame(
         y = 0,
-        A = d$A[r],
-        B = d$B[r],
+        A_code = d$Fac_A[r],
+        B_code = d$Fac_B[r],
         weight = f
       )
     }
   }
 
-  if (z == 0L) stop("No observations available for Firth logistic regression.")
+  if (z == 0L) {
+    stop("No observations available for Firth logistic regression.")
+  }
 
-  out <- do.call(rbind, rows[seq_len(z)])
-  out$A <- factor(out$A, levels = paste0("A", seq_len(prep$I)))
-  out$B <- factor(out$B, levels = paste0("B", seq_len(prep$J)))
+  out <- do.call(rbind, out_list[seq_len(z)])
+
+  out$A <- factor(
+    out$A_code,
+    levels = seq_len(prep$I),
+    labels = paste0("A", seq_len(prep$I))
+  )
+  out$B <- factor(
+    out$B_code,
+    levels = seq_len(prep$J),
+    labels = paste0("B", seq_len(prep$J))
+  )
+
+  out$A_code <- NULL
+  out$B_code <- NULL
 
   list(df = out, I = prep$I, J = prep$J)
 }
@@ -1117,6 +1183,13 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
   d <- prep$df
   I <- prep$I
   J <- prep$J
+
+  if (length(unique(d$A[!is.na(d$A)])) < 2L) {
+    stop("Factor A must contain at least two represented levels for the overall Firth analysis.")
+  }
+  if (length(unique(d$B[!is.na(d$B)])) < 2L) {
+    stop("Factor B must contain at least two represented levels for the overall Firth analysis.")
+  }
 
   # pl = FALSE avoids computing profile-likelihood intervals for every fit;
   # the factorial tests below use logistf's nested penalized LRT via anova().
@@ -1238,8 +1311,24 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
   prep <- .expand_binomial_for_firth(d0)
   d <- prep$df
 
+  nA <- length(unique(d$A[!is.na(d$A)]))
+  nB <- length(unique(d$B[!is.na(d$B)]))
+
+  # After two levels are merged, a two-level factor becomes a one-level factor.
+  # In that case the equality-constrained reduced model must simply omit that
+  # factor term; attempting to include it causes R's contrasts error.
+  if (nA >= 2L && nB >= 2L) {
+    form <- y ~ A + B
+  } else if (nA >= 2L && nB < 2L) {
+    form <- y ~ A
+  } else if (nA < 2L && nB >= 2L) {
+    form <- y ~ B
+  } else {
+    form <- y ~ 1
+  }
+
   logistf::logistf(
-    y ~ A + B,
+    form,
     data = d,
     weights = weight,
     firth = TRUE,
@@ -1696,6 +1785,174 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
 
 
 # ============================================================
+# Original-label helpers
+# ============================================================
+
+.input_factor_labels <- function(data) {
+  list(
+    A = unique(as.character(data$Fac_A)),
+    B = unique(as.character(data$Fac_B))
+  )
+}
+
+.label_from_code <- function(x, labels) {
+  raw <- as.character(x)
+
+  # Accept both plain internal codes ("1", "2", ...) and internally generated
+  # display labels ("A1", "A2", ... or "B1", "B2", ...).
+  code_txt <- sub("^[AB](?=[0-9]+$)", "", raw, perl = TRUE)
+  z <- suppressWarnings(as.integer(code_txt))
+
+  ans <- raw
+  ok <- !is.na(z) & z >= 1L & z <= length(labels)
+  ans[ok] <- labels[z[ok]]
+  ans
+}
+
+.relabel_contrast_text <- function(x, A_labels, B_labels) {
+  out <- as.character(x)
+
+  # Contrast strings generated internally are of the form A1 - A2 or B1 - B2.
+  for (k in rev(seq_along(A_labels))) {
+    out <- gsub(
+      paste0("(?<![[:alnum:]_])A", k, "(?![[:digit:]])"),
+      A_labels[k], out, perl = TRUE
+    )
+  }
+  for (k in rev(seq_along(B_labels))) {
+    out <- gsub(
+      paste0("(?<![[:alnum:]_])B", k, "(?![[:digit:]])"),
+      B_labels[k], out, perl = TRUE
+    )
+  }
+  out
+}
+
+.relabel_pairwise_table <- function(tab, nm, A_labels, B_labels) {
+  if (is.null(tab) || !is.data.frame(tab)) return(tab)
+
+  if (nm == "Factor_A") {
+    if ("Level1" %in% names(tab)) tab$Level1 <- .label_from_code(tab$Level1, A_labels)
+    if ("Level2" %in% names(tab)) tab$Level2 <- .label_from_code(tab$Level2, A_labels)
+  } else if (nm == "Factor_B") {
+    if ("Level1" %in% names(tab)) tab$Level1 <- .label_from_code(tab$Level1, B_labels)
+    if ("Level2" %in% names(tab)) tab$Level2 <- .label_from_code(tab$Level2, B_labels)
+  } else if (nm == "A_within_B") {
+    if ("Fixed_level" %in% names(tab)) tab$Fixed_level <- .label_from_code(tab$Fixed_level, B_labels)
+    if ("Level1" %in% names(tab)) tab$Level1 <- .label_from_code(tab$Level1, A_labels)
+    if ("Level2" %in% names(tab)) tab$Level2 <- .label_from_code(tab$Level2, A_labels)
+  } else if (nm == "B_within_A") {
+    if ("Fixed_level" %in% names(tab)) tab$Fixed_level <- .label_from_code(tab$Fixed_level, A_labels)
+    if ("Level1" %in% names(tab)) tab$Level1 <- .label_from_code(tab$Level1, B_labels)
+    if ("Level2" %in% names(tab)) tab$Level2 <- .label_from_code(tab$Level2, B_labels)
+  }
+
+  if ("Contrast" %in% names(tab)) {
+    tab$Contrast <- .relabel_contrast_text(tab$Contrast, A_labels, B_labels)
+  }
+
+  if ("Simple_effect" %in% names(tab)) {
+    se <- as.character(tab$Simple_effect)
+
+    # Examples:
+    #   "A within B1" -> "A within 2016"
+    #   "B within A3" -> "B within S10"
+    idxA <- grepl("^A within B[0-9]+$", se)
+    if (any(idxA)) {
+      code <- sub("^A within B", "", se[idxA])
+      se[idxA] <- paste0("A within ", .label_from_code(code, B_labels))
+    }
+
+    idxB <- grepl("^B within A[0-9]+$", se)
+    if (any(idxB)) {
+      code <- sub("^B within A", "", se[idxB])
+      se[idxB] <- paste0("B within ", .label_from_code(code, A_labels))
+    }
+
+    tab$Simple_effect <- se
+  }
+
+  tab
+}
+
+.relabel_cld_table <- function(tab, nm, A_labels, B_labels) {
+  if (is.null(tab) || !is.data.frame(tab)) return(tab)
+
+  if (nm == "Factor_A") {
+    if ("Level" %in% names(tab)) tab$Level <- .label_from_code(tab$Level, A_labels)
+  } else if (nm == "Factor_B") {
+    if ("Level" %in% names(tab)) tab$Level <- .label_from_code(tab$Level, B_labels)
+  } else if (nm == "A_within_B") {
+    if ("Level" %in% names(tab)) tab$Level <- .label_from_code(tab$Level, A_labels)
+    if ("Fixed_level" %in% names(tab)) tab$Fixed_level <- .label_from_code(tab$Fixed_level, B_labels)
+  } else if (nm == "B_within_A") {
+    if ("Level" %in% names(tab)) tab$Level <- .label_from_code(tab$Level, B_labels)
+    if ("Fixed_level" %in% names(tab)) tab$Fixed_level <- .label_from_code(tab$Fixed_level, A_labels)
+  }
+
+  tab
+}
+
+.relabel_probability_matrix <- function(x, A_labels, B_labels) {
+  if (!is.matrix(x)) return(x)
+  if (nrow(x) == length(A_labels)) rownames(x) <- A_labels
+  if (ncol(x) == length(B_labels)) colnames(x) <- B_labels
+  x
+}
+
+.relabel_result <- function(result, labels) {
+  A_labels <- labels$A
+  B_labels <- labels$B
+
+  if (!is.null(result$posthoc) && length(result$posthoc) > 0) {
+    for (nm in names(result$posthoc)) {
+      result$posthoc[[nm]] <- .relabel_pairwise_table(
+        result$posthoc[[nm]], nm, A_labels, B_labels
+      )
+    }
+  }
+
+  if (!is.null(result$cld) && length(result$cld) > 0) {
+    for (nm in names(result$cld)) {
+      result$cld[[nm]] <- .relabel_cld_table(
+        result$cld[[nm]], nm, A_labels, B_labels
+      )
+    }
+  }
+
+  if (!is.null(result$fitted_probabilities)) {
+    if (is.list(result$fitted_probabilities)) {
+      result$fitted_probabilities <- lapply(
+        result$fitted_probabilities,
+        .relabel_probability_matrix,
+        A_labels = A_labels,
+        B_labels = B_labels
+      )
+    } else if (is.matrix(result$fitted_probabilities)) {
+      result$fitted_probabilities <- .relabel_probability_matrix(
+        result$fitted_probabilities, A_labels, B_labels
+      )
+    }
+  }
+
+  # Probability-scale additive fit contains a fitted A x B matrix.
+  if (!is.null(result$additive_fit$p_matrix) &&
+      is.matrix(result$additive_fit$p_matrix)) {
+    result$additive_fit$p_matrix <- .relabel_probability_matrix(
+      result$additive_fit$p_matrix, A_labels, B_labels
+    )
+  }
+
+  result$factor_labels <- list(
+    Factor_A = A_labels,
+    Factor_B = B_labels
+  )
+
+  result
+}
+
+
+# ============================================================
 # Main user function
 # ============================================================
 #
@@ -1716,6 +1973,9 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
 # Required columns:
 #   Fac_A, Fac_B, g_ijk, n_ijk
 #
+# Fac_A and Fac_B may be numeric, character, or factor variables.
+# Original factor labels are retained in the output.
+#
 # Interpretation:
 #   scale = "probability"
 #     Interaction is defined through constancy of absolute differences
@@ -1724,8 +1984,9 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
 #   scale = "logit"
 #     Interaction is defined through constancy of differences in log-odds.
 #
-#   method = "firth"
-#     Available only with scale = "logit".
+#   method
+#     Optional. If omitted, method = "mle" is used automatically.
+#     Specify method = "firth" only for Firth logistic regression on the logit scale.
 #
 # The default call
 #   germination_factorial_LRT(data)
@@ -1738,7 +1999,7 @@ if (!requireNamespace("multcompView", quietly = TRUE)) {
 germination_factorial_LRT <- function(
     data,
     scale = c("probability", "logit"),
-    method = c("mle", "firth"),
+    method = NULL,
     alpha = 0.05,
     posthoc = TRUE,
     adjust = "holm",
@@ -1748,14 +2009,22 @@ germination_factorial_LRT <- function(
     xtol_rel = 1e-10,
     ftol_rel = 1e-12
 ) {
+  input_labels <- .input_factor_labels(data)
+
   scale <- match.arg(scale)
-  method <- match.arg(method)
+
+  if (is.null(method)) {
+    method <- "mle"
+  } else {
+    method <- match.arg(method, c("mle", "firth"))
+  }
+
   simple_effects <- match.arg(simple_effects)
 
   if (scale == "probability" && method != "mle") {
     stop(
       "method = 'firth' is available only for scale = 'logit'. ",
-      "For probability-scale analysis, use method = 'mle'."
+      "For probability-scale analysis, omit 'method' or use method = 'mle'."
     )
   }
 
@@ -2015,6 +2284,8 @@ germination_factorial_LRT <- function(
     )
   }
 
+  result <- .relabel_result(result, input_labels)
+
   structure(result, class = "germination_factorial_LRT")
 }
 
@@ -2101,17 +2372,22 @@ germination_factorial_LRT <- function(
 # Print method
 # ============================================================
 
+.method_label <- function(scale, method) {
+  if (identical(scale, "probability")) {
+    return("Binomial LRT with constrained probability-scale additivity")
+  }
+  if (identical(method, "firth")) {
+    return("Firth logistic regression with penalized LRTs")
+  }
+  "Ordinary binomial logistic regression with LRTs"
+}
+
+
 print.germination_factorial_LRT <- function(x, ...) {
   cat("\nTwo-factor germination analysis\n")
   cat("================================\n\n")
 
-  if (identical(x$scale, "probability")) {
-    method_label <- "Binomial LRT with constrained probability-scale additivity"
-  } else if (identical(x$method, "firth")) {
-    method_label <- "Firth logistic regression with penalized LRTs"
-  } else {
-    method_label <- "Ordinary binomial logistic regression with LRTs"
-  }
+  method_label <- .method_label(x$scale, x$method)
 
   cat("Interaction scale : ", x$scale, "\n", sep = "")
   cat("Method            : ", method_label, "\n", sep = "")
@@ -2194,8 +2470,10 @@ print.summary.germination_factorial_LRT <- function(x, ...) {
   cat("\nTwo-factor germination analysis summary\n")
   cat("=======================================\n\n")
 
+  method_label <- .method_label(x$scale, x$method)
+
   cat("Interaction scale : ", x$scale, "\n", sep = "")
-  cat("Method            : ", x$method, "\n", sep = "")
+  cat("Method            : ", method_label, "\n", sep = "")
   cat("Interaction null  : ", x$interaction_null, "\n\n", sep = "")
 
   cat("Overall tests\n")
@@ -2275,7 +2553,6 @@ summary_tables <- function(fit) {
 # fit_prob <- germination_factorial_LRT(
 #   data = dat,
 #   scale = "probability",
-#   method = "mle",
 #   posthoc = TRUE
 # )
 # print(fit_prob)
@@ -2285,7 +2562,6 @@ summary_tables <- function(fit) {
 # fit_logit <- germination_factorial_LRT(
 #   data = dat,
 #   scale = "logit",
-#   method = "mle",
 #   posthoc = TRUE
 # )
 # print(fit_logit)

@@ -4,7 +4,7 @@
 # probability-scale two-factor Binomial LRT.
 #
 # Files expected in the same folder:
-#   factorial_binomial_LRT.R
+#   germination_factorial_LRT.R
 #   sheepgrass.csv
 #
 # Required packages:
@@ -15,7 +15,7 @@
 # Uncomment once if the packages are not installed:
 # install.packages(c("nloptr", "multcompView"))
 
-source("factorial_binomial_LRT.R")
+source("germination_factorial_LRT.R")
 
 # Read data.
 # Required columns:
@@ -37,6 +37,8 @@ head(sheepgrass)
 # model, followed by Holm adjustment and compact letter displays.
 fit <- germination_factorial_LRT(
   data = sheepgrass,
+  scale = "probability",
+  method = "mle",
   alpha = 0.05,
   posthoc = TRUE,
   adjust = "holm",
